@@ -84,6 +84,14 @@ button {
 .item strong {
   color: #7d5fff;
 }
+
+.barcode-box {
+  text-align: center;
+  background: white;
+  padding: 15px;
+  border-radius: 10px;
+  margin: 15px 0;
+}
 </style>
 </head>
 
@@ -93,10 +101,10 @@ button {
 <h1>💜 Serenne Barcode Manager</h1>
 
 <label>상품명</label>
-<input type="text" id="productName" placeholder="예: 로제 리본 블라우스">
+<input type="text" id="productName" placeholder="예: 로제 자가드 스커트">
 
 <label>브랜드 코드</label>
-<input type="text" id="brand" placeholder="예: SRN">
+<input type="text" id="brand" value="SRN" placeholder="예: SRN">
 
 <label>카테고리 선택</label>
 <select id="category"></select>
@@ -114,7 +122,7 @@ button {
 
 <div class="search-box">
   <h2>상품 조회</h2>
-  <input type="text" id="searchKeyword" placeholder="상품명을 입력해 검색하세요" oninput="renderProducts()">
+  <input type="text" id="searchKeyword" placeholder="상품명 또는 상품코드로 검색" oninput="renderProducts()">
 </div>
 
 <div class="list">
@@ -125,7 +133,7 @@ button {
 </div>
 
 <script>
-let categories = JSON.parse(localStorage.getItem("categories")) || ["TOP", "BTM", "OPS", "OUT", "ACC"];
+let categories = JSON.parse(localStorage.getItem("categories")) || ["TOP", "BTM", "OPS", "OUT", "ACC", "SKIRT"];
 let counters = JSON.parse(localStorage.getItem("counters")) || {};
 let products = JSON.parse(localStorage.getItem("products")) || [];
 
@@ -171,7 +179,6 @@ function addCategory() {
 
 function deleteCategory() {
   const selectedCategory = document.getElementById("category").value;
-
   if (!selectedCategory) return;
 
   if (!confirm(selectedCategory + " 카테고리를 삭제할까요?")) return;
@@ -214,24 +221,19 @@ function generateProduct() {
 
   products.unshift(product);
   counters[category]++;
-
   saveData();
 
   document.getElementById("result").innerHTML = `
     <div class="code">${productCode}</div>
-    <svg id="barcode"></svg>
+    <div class="barcode-box">
+      <svg id="barcode"></svg>
+    </div>
     <p>${productName}</p>
     <button onclick="copyCode('${productCode}')">상품코드 복사하기</button>
+    <button onclick="downloadBarcode('barcode', '${productCode}')">바코드 PNG 다운로드</button>
   `;
 
-  JsBarcode("#barcode", productCode, {
-    format: "CODE128",
-    lineColor: "#333",
-    width: 2,
-    height: 80,
-    displayValue: true
-  });
-
+  createBarcode("barcode", productCode);
   renderProducts();
 }
 
@@ -256,21 +258,62 @@ function renderProducts() {
       <p><strong>상품코드:</strong> ${product.code}</p>
       <p><strong>카테고리:</strong> ${product.category}</p>
       <p><strong>생성일:</strong> ${product.createdAt}</p>
-      <svg id="savedBarcode${index}"></svg>
-      <button onclick="copyCode('${product.code}')">복사하기</button>
-      <button class="small-button" onclick="deleteProduct('${product.code}')">삭제하기</button>
+      <div class="barcode-box">
+        <svg id="savedBarcode${index}"></svg>
+      </div>
+      <button onclick="copyCode('${product.code}')">상품코드 복사</button>
+      <button onclick="downloadBarcode('savedBarcode${index}', '${product.code}')">바코드 PNG 다운로드</button>
+      <button class="small-button" onclick="deleteProduct('${product.code}')">삭제</button>
     </div>
   `).join("");
 
   filtered.forEach((product, index) => {
-    JsBarcode(`#savedBarcode${index}`, product.code, {
-      format: "CODE128",
-      lineColor: "#333",
-      width: 2,
-      height: 60,
-      displayValue: true
-    });
+    createBarcode(`savedBarcode${index}`, product.code);
   });
+}
+
+function createBarcode(elementId, code) {
+  JsBarcode("#" + elementId, code, {
+    format: "CODE128",
+    lineColor: "#333",
+    width: 2,
+    height: 80,
+    displayValue: true,
+    fontSize: 16,
+    margin: 10
+  });
+}
+
+function downloadBarcode(elementId, code) {
+  const svg = document.getElementById(elementId);
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(svg);
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const img = new Image();
+
+  const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+
+  img.onload = function() {
+    canvas.width = img.width + 40;
+    canvas.height = img.height + 40;
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 20, 20);
+
+    URL.revokeObjectURL(url);
+
+    const pngUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = pngUrl;
+    link.download = code + ".png";
+    link.click();
+  };
+
+  img.src = url;
 }
 
 function copyCode(code) {
