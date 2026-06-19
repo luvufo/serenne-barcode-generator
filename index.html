@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Serenne Product Code Generator</title>
+<title>Serenne Barcode Manager</title>
+
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 
 <style>
 body {
@@ -13,7 +15,7 @@ body {
 }
 
 .container {
-  max-width: 700px;
+  max-width: 800px;
   margin: auto;
   background: white;
   padding: 30px;
@@ -21,7 +23,7 @@ body {
   box-shadow: 0 0 20px rgba(0,0,0,0.1);
 }
 
-h1 {
+h1, h2 {
   text-align: center;
   color: #7d5fff;
 }
@@ -57,25 +59,30 @@ button {
   color: #333;
 }
 
-.result {
+.result, .search-box, .list {
   margin-top: 20px;
   padding: 20px;
   background: #f3f0ff;
   border-radius: 10px;
-  text-align: center;
 }
 
 .code {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: bold;
   color: #7d5fff;
+  text-align: center;
 }
 
-.history {
-  margin-top: 20px;
-  background: #fafafa;
+.item {
+  background: white;
   padding: 15px;
+  margin-top: 12px;
   border-radius: 10px;
+  border: 1px solid #eee;
+}
+
+.item strong {
+  color: #7d5fff;
 }
 </style>
 </head>
@@ -83,7 +90,10 @@ button {
 <body>
 <div class="container">
 
-<h1>💜 Serenne Product Code Generator</h1>
+<h1>💜 Serenne Barcode Manager</h1>
+
+<label>상품명</label>
+<input type="text" id="productName" placeholder="예: 로제 리본 블라우스">
 
 <label>브랜드 코드</label>
 <input type="text" id="brand" placeholder="예: SRN">
@@ -96,15 +106,20 @@ button {
 <button onclick="addCategory()">카테고리 추가하기</button>
 <button class="small-button" onclick="deleteCategory()">선택한 카테고리 삭제</button>
 
-<button onclick="generateCode()">상품코드 생성하기</button>
+<button onclick="generateProduct()">상품코드 + 바코드 생성하기</button>
 
 <div class="result" id="result">
-상품코드가 여기에 표시됩니다.
+상품코드와 바코드가 여기에 표시됩니다.
 </div>
 
-<div class="history">
-  <h3>생성 기록</h3>
-  <div id="historyList">아직 생성된 코드가 없습니다.</div>
+<div class="search-box">
+  <h2>상품 조회</h2>
+  <input type="text" id="searchKeyword" placeholder="상품명을 입력해 검색하세요" oninput="renderProducts()">
+</div>
+
+<div class="list">
+  <h2>저장된 상품 목록</h2>
+  <div id="productList">아직 저장된 상품이 없습니다.</div>
 </div>
 
 </div>
@@ -112,12 +127,12 @@ button {
 <script>
 let categories = JSON.parse(localStorage.getItem("categories")) || ["TOP", "BTM", "OPS", "OUT", "ACC"];
 let counters = JSON.parse(localStorage.getItem("counters")) || {};
-let history = JSON.parse(localStorage.getItem("history")) || [];
+let products = JSON.parse(localStorage.getItem("products")) || [];
 
 function saveData() {
   localStorage.setItem("categories", JSON.stringify(categories));
   localStorage.setItem("counters", JSON.stringify(counters));
-  localStorage.setItem("history", JSON.stringify(history));
+  localStorage.setItem("products", JSON.stringify(products));
 }
 
 function renderCategories() {
@@ -132,22 +147,9 @@ function renderCategories() {
   });
 }
 
-function renderHistory() {
-  const historyList = document.getElementById("historyList");
-
-  if (history.length === 0) {
-    historyList.innerHTML = "아직 생성된 코드가 없습니다.";
-    return;
-  }
-
-  historyList.innerHTML = history
-    .map(code => `<p>${code}</p>`)
-    .join("");
-}
-
 function addCategory() {
-  const newCategoryInput = document.getElementById("newCategory");
-  const newCategory = newCategoryInput.value.trim().toUpperCase();
+  const input = document.getElementById("newCategory");
+  const newCategory = input.value.trim().toUpperCase();
 
   if (newCategory === "") {
     alert("추가할 카테고리를 입력해 주세요.");
@@ -161,7 +163,7 @@ function addCategory() {
 
   categories.push(newCategory);
   counters[newCategory] = 1;
-  newCategoryInput.value = "";
+  input.value = "";
 
   saveData();
   renderCategories();
@@ -172,9 +174,7 @@ function deleteCategory() {
 
   if (!selectedCategory) return;
 
-  const confirmDelete = confirm(selectedCategory + " 카테고리를 삭제할까요?");
-
-  if (!confirmDelete) return;
+  if (!confirm(selectedCategory + " 카테고리를 삭제할까요?")) return;
 
   categories = categories.filter(category => category !== selectedCategory);
   delete counters[selectedCategory];
@@ -183,12 +183,18 @@ function deleteCategory() {
   renderCategories();
 }
 
-function generateCode() {
+function generateProduct() {
+  const productName = document.getElementById("productName").value.trim();
   const brand = document.getElementById("brand").value.trim().toUpperCase();
   const category = document.getElementById("category").value;
 
+  if (productName === "") {
+    alert("상품명을 입력해 주세요.");
+    return;
+  }
+
   if (brand === "") {
-    document.getElementById("result").innerHTML = "브랜드 코드를 입력해 주세요.";
+    alert("브랜드 코드를 입력해 주세요.");
     return;
   }
 
@@ -199,16 +205,72 @@ function generateCode() {
   const number = String(counters[category]).padStart(4, "0");
   const productCode = `${brand}-${category}-${number}`;
 
-  document.getElementById("result").innerHTML = `
-    <div class="code">${productCode}</div>
-    <button onclick="copyCode('${productCode}')">복사하기</button>
-  `;
+  const product = {
+    name: productName,
+    code: productCode,
+    category: category,
+    createdAt: new Date().toLocaleString()
+  };
 
-  history.unshift(productCode);
+  products.unshift(product);
   counters[category]++;
 
   saveData();
-  renderHistory();
+
+  document.getElementById("result").innerHTML = `
+    <div class="code">${productCode}</div>
+    <svg id="barcode"></svg>
+    <p>${productName}</p>
+    <button onclick="copyCode('${productCode}')">상품코드 복사하기</button>
+  `;
+
+  JsBarcode("#barcode", productCode, {
+    format: "CODE128",
+    lineColor: "#333",
+    width: 2,
+    height: 80,
+    displayValue: true
+  });
+
+  renderProducts();
+}
+
+function renderProducts() {
+  const list = document.getElementById("productList");
+  const keyword = document.getElementById("searchKeyword").value.trim().toLowerCase();
+
+  const filtered = products.filter(product =>
+    product.name.toLowerCase().includes(keyword) ||
+    product.code.toLowerCase().includes(keyword) ||
+    product.category.toLowerCase().includes(keyword)
+  );
+
+  if (filtered.length === 0) {
+    list.innerHTML = "조회된 상품이 없습니다.";
+    return;
+  }
+
+  list.innerHTML = filtered.map((product, index) => `
+    <div class="item">
+      <p><strong>상품명:</strong> ${product.name}</p>
+      <p><strong>상품코드:</strong> ${product.code}</p>
+      <p><strong>카테고리:</strong> ${product.category}</p>
+      <p><strong>생성일:</strong> ${product.createdAt}</p>
+      <svg id="savedBarcode${index}"></svg>
+      <button onclick="copyCode('${product.code}')">복사하기</button>
+      <button class="small-button" onclick="deleteProduct('${product.code}')">삭제하기</button>
+    </div>
+  `).join("");
+
+  filtered.forEach((product, index) => {
+    JsBarcode(`#savedBarcode${index}`, product.code, {
+      format: "CODE128",
+      lineColor: "#333",
+      width: 2,
+      height: 60,
+      displayValue: true
+    });
+  });
 }
 
 function copyCode(code) {
@@ -216,8 +278,16 @@ function copyCode(code) {
   alert("복사 완료: " + code);
 }
 
+function deleteProduct(code) {
+  if (!confirm("이 상품을 삭제할까요?")) return;
+
+  products = products.filter(product => product.code !== code);
+  saveData();
+  renderProducts();
+}
+
 renderCategories();
-renderHistory();
+renderProducts();
 </script>
 
 </body>
